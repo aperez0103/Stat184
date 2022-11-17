@@ -1,0 +1,192 @@
+---
+title: "Activity 09"
+author: "Angel Perez with Nathanael Nemia"
+date: "`r paste('Last Updated:', Sys.Date())`"
+output:
+  html_notebook: default
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+```{r setup}
+knitr::opts_chunk$set(message = FALSE, echo = TRUE)
+library(tinytex)
+library(rmarkdown)
+library(knitr)
+library(kableExtra)
+library(rvest)
+library(dplyr)
+library(readr)
+library(ggplot2)
+library(tidyr)
+library(ggrepel)
+library(trackdown)
+
+```
+
+```{r data}
+### Raw Data Scraping
+## ESPN Tables
+espnGiantsTables <- read_html(
+  x = "https://www.espn.com/nfl/team/stats/_/name/nyg/table/rushing/sort/yardsPerRushAttempt/dir/asc"
+  ) %>%
+  html_elements(css = "table") %>%
+  html_table()
+
+## Giants Tables
+giantsTables <- read_html(
+  x = "https://www.giants.com/team/players-roster/"
+) %>%
+  html_elements(css = "table") %>%
+  html_table ()
+
+```
+
+```{r formatting1}
+### Binding Giants' rows (Creating full team roster)
+
+## Transforming `#` into int. 
+giantsTables[[1]] <- subset(giantsTables[[1]], giantsTables[[1]]$`#` != "-") %>%
+  mutate(`#`= parse_number(`#`)
+) 
+giantsTables[[5]] <- subset(giantsTables[[5]], giantsTables[[5]]$`#` != "-") %>%
+  mutate(`#`= parse_number(`#`)
+) 
+
+## Transforming Exp into int.
+#Replace all "R" with "0"
+giantsTables[[1]]$Exp <- ifelse(giantsTables[[1]]$Exp == "R", "0", giantsTables[[1]]$Exp )
+giantsTables[[3]]$Exp <- ifelse(giantsTables[[3]]$Exp == "R", "0", giantsTables[[3]]$Exp )
+giantsTables[[5]]$Exp <- ifelse(giantsTables[[5]]$Exp == "R", "0", giantsTables[[5]]$Exp ) 
+
+# Exp -> int.
+giantsTables[[1]] <- giantsTables[[1]] %>%
+  mutate( Exp = parse_number(Exp))
+giantsTables[[3]] <- giantsTables[[3]] %>%
+  mutate( Exp = parse_number(Exp))
+giantsTables[[5]] <- giantsTables[[5]] %>%
+  mutate( Exp = parse_number(Exp))
+
+## Fixing "T"= TRUE problem
+giantsTables[[5]]$Pos <- ifelse(giantsTables[[5]]$Pos == TRUE, "T", giantsTables[[5]]$Pos)
+
+```
+
+```{r tidying1, message=FALSE}
+### Create Full Roster
+## Full Team Roster
+roster <- bind_rows(giantsTables[[1]], giantsTables[[2]], giantsTables[[3]], giantsTables[[4]], giantsTables[[5]])
+
+##ESPN Scoring Table
+espnScoring <- bind_cols(espnGiantsTables[[9]], espnGiantsTables[[10]])
+
+```
+
+```{r formatting2}
+#Rename Columns
+colnames(espnScoring) <- espnScoring[1,]
+espnScoring <- espnScoring[-1,]
+
+#format epsnScoring
+espnScoring <- espnScoring %>%
+  mutate(
+    TD = parse_number(TD), 
+  ) %>%
+  mutate(
+    GP = parse_number(GP)
+  ) %>%
+  mutate(
+    REC = parse_number(REC)
+  ) %>%
+  mutate(
+    RUSH = parse_number(RUSH)
+  ) %>%
+  mutate(
+    RET = parse_number(RET)
+  ) %>%
+  mutate(
+    FG = parse_number(FG)
+  ) %>%
+  mutate(
+    PAT = parse_number(PAT)
+  ) %>%
+  mutate(
+    `2PT` = parse_number(`2PT`)
+  ) %>%
+  mutate(
+    PTS = parse_number(PTS)
+  ) %>%
+  mutate(
+    `TP/G` = parse_number(`TP/G`)
+  )
+
+##Separate Name from Position; Remove Total row(s)
+espnScoring <- espnScoring %>%
+  filter(Name != "Total") %>%
+  tidyr::separate(
+    col = Name,
+    into = c("First", "Last", "Position"),
+    sep = "[[:blank:]]"
+  ) %>%
+  mutate(
+    "Player" = paste(First, Last, sep = " "),
+    .before = First
+  )
+
+```
+
+```{r data wrangling}
+### Combine Both espnScoring and roster
+giantsFinal <- inner_join(
+  x = espnScoring,
+  y = roster,
+  by = c("Player", "Position" = "Pos")
+)
+```
+
+```{r giantsPlot, paged.print=TRUE, fig.align='center', include = TRUE}
+#FIX CHUNK INFO
+ggplot(
+  data = giantsFinal,
+  mapping = aes(x = Exp, y = PTS, color = Position, shape = Position)
+) +scale_shape_manual(values = c(20,4,5,7,9))+
+  geom_point(size = 3, na.rm = TRUE) +
+  geom_text_repel(
+    mapping = aes(label = paste0("#",`#`)),
+    color = "black",
+    nudge_y = 3,
+    size = 4,
+    na.rm = TRUE
+  ) +
+  theme_bw() +
+  xlab("Experience (years)") +
+  ylab("Scored Points") +
+  ggtitle("Total Scored Points by Giants Player Experience and Position") +
+  theme(plot.title = element_text(hjust = 0.5),
+    text = element_text(size = 10)
+  )
+```
+
+The plot shows Giant players' total scored points based on years of experience. The x-axis represents the Experience and the y-axis represents the number of points. Each point on the plot represents a player and is labeled with the player's number. Each point is also a distinct shape and color representing the player's positions. The players consist of #17, #82, #85, #23, #8, #86, #26, #3 and the player positions consist of FB, QB, RB, TE, and WR. Looking at the plot you can see that many players score close to 0 points. The WR's collectively are very close to 0 with no outliers regardless of experience. The FB is also close to 0, however with only one data point it is hard to say if FB are typically low scorers. The same can be said for TE and QB as there are no other points to compare it to accurately despite seeming to be mid scorers. It is interesting to note that QB scored higher than WR as you would not usually assume them to make any touchdowns, however this may be due to field goals although I don't know why they would not have a kicker. In conclusion, from this plot you can see that experience is not necessarily linked to scored points and it is not known whether position affects scored points. This is shown especially with the RB as #26 seems to have scored about 32 points while the other RB scored very close to 0 points. This could be because one RB is not often put into the game as the one with more experience scored the points, but this is unknown. The plot is very interesting as it is really obscure as the expected biggest points scorers are actually very close to 0 points scored. I don't know how the QB scores higher than the WRs, FB, and RB. If this is consistent I think the Giants should really look into their roster.
+
+```{r upload, echo=TRUE, eval = FALSE}
+
+trackdown::upload_file(
+  file = "Activity_09.Rmd",
+  hide_code = TRUE,
+  rich_text = TRUE,
+  path_output = "Activity_09.pdf"
+)
+
+trackdown::update_file(
+  file = "Activity_09.Rmd",
+  hide_code = TRUE,
+  rich_text = TRUE,
+  path_output = "Activity_09.pdf"
+)
+
+trackdown::download_file(
+  file = "Activity_09.Rmd"
+)
+```

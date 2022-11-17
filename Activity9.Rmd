@@ -1,0 +1,141 @@
+---
+title: "Activity 09"
+author: "Angel Perez"
+date: "`r paste('Last Updated:', Sys.Date())`"
+output: html_notebook
+---
+
+```{r setup}
+knitr::opts_chunk$set(echo = TRUE)
+library(tinytex)
+library(rmarkdown)
+library(knitr)
+library(kableExtra)
+library(rvest)
+library(dplyr)
+library(readr)
+library(ggplot2)
+library(tidyr)
+
+
+```
+
+```{r data, echo=TRUE}
+### Raw Data Scraping
+## ESPN Tables
+espnGiantsTables <- read_html(
+  x = "https://www.espn.com/nfl/team/stats/_/name/nyg/table/rushing/sort/yardsPerRushAttempt/dir/asc"
+  ) %>%
+  html_elements(css = "table") %>%
+  html_table()
+
+## Giants Tables
+giantsTables <- read_html(
+  x = "https://www.giants.com/team/players-roster/"
+) %>%
+  html_elements(css = "table") %>%
+  html_table ()
+
+```
+
+```{r formatting1, echo=TRUE}
+### Binding Giants' rows (Creating full team roster)
+
+## Transforming `#` into int. 
+giantsTables[[1]] <- subset(giantsTables[[1]], giantsTables[[1]]$`#` != "-") %>%
+  mutate(`#`= parse_number(`#`)
+) 
+giantsTables[[6]] <- subset(giantsTables[[6]], giantsTables[[6]]$`#` != "-") %>%
+  mutate(`#`= parse_number(`#`)
+) 
+
+## Transforming Exp into int.
+#Replace all "R" with "0"
+giantsTables[[1]]$Exp <- ifelse(giantsTables[[1]]$Exp == "R", "0", giantsTables[[1]]$Exp )
+giantsTables[[3]]$Exp <- ifelse(giantsTables[[3]]$Exp == "R", "0", giantsTables[[3]]$Exp )
+giantsTables[[6]]$Exp <- ifelse(giantsTables[[6]]$Exp == "R", "0", giantsTables[[6]]$Exp ) 
+
+# Exp -> int.
+giantsTables[[1]] <- giantsTables[[1]] %>%
+  mutate( Exp = parse_number(Exp))
+giantsTables[[3]] <- giantsTables[[3]] %>%
+  mutate( Exp = parse_number(Exp))
+giantsTables[[6]] <- giantsTables[[6]] %>%
+  mutate( Exp = parse_number(Exp))
+
+## Fixing "T"= TRUE problem
+giantsTables[[5]]$Pos <- ifelse(giantsTables[[5]]$Pos == TRUE, "T", giantsTables[[5]]$Pos)
+
+```
+
+```{r tidying1, echo=TRUE}
+### Create Full Roster
+## Full Team Roster
+roster <- bind_rows(giantsTables[[1]], giantsTables[[2]], giantsTables[[3]], giantsTables[[4]], giantsTables[[5]], giantsTables[[6]])
+
+##ESPN Scoring Table
+espnScoring <- bind_cols(espnGiantsTables[[9]], espnGiantsTables[[10]])
+
+```
+
+```{r formatting2, echo=TRUE}
+#Rename Columns
+colnames(espnScoring) <- espnScoring[1,]
+espnScoring <- espnScoring[-1,]
+
+#format epsnScoring
+espnScoring <- espnScoring %>%
+  mutate(
+    TD = parse_number(TD), 
+  ) %>%
+  mutate(
+    GP = parse_number(GP)
+  ) %>%
+  mutate(
+    REC = parse_number(REC)
+  ) %>%
+  mutate(
+    RUSH = parse_number(RUSH)
+  ) %>%
+  mutate(
+    RET = parse_number(RET)
+  ) %>%
+  mutate(
+    FG = parse_number(FG)
+  ) %>%
+  mutate(
+    PAT = parse_number(PAT)
+  ) %>%
+  mutate(
+    `2PT` = parse_number(`2PT`)
+  ) %>%
+  mutate(
+    PTS = parse_number(PTS)
+  ) %>%
+  mutate(
+    `TP/G` = parse_number(`TP/G`)
+  )
+
+##Separate Name from Position; Remove Total row(s)
+espnScoring <- espnScoring %>%
+  filter(Name != "Total") %>%
+  tidyr::separate(
+    col = Name,
+    into = c("First", "Last", "Position"),
+    sep = "[[:blank:]]"
+  ) %>%
+  mutate(
+    "Player" = paste(First, Last, sep = " "),
+    .before = First
+  )
+
+```
+
+```{r data wrangling, echo=TRUE}
+### Combine Both espnScoring and roster
+giantsFinal <- inner_join(
+  x = roster,
+  y = espnScoring,
+  by = c()
+)
+```
